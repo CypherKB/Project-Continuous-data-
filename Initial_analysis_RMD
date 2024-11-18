@@ -1,0 +1,168 @@
+---
+title: "Statistical modelling"
+output: html_document
+date: "2024-11-11"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Load the libraries
+```{r cars}
+#libraries
+library(haven)
+library(ggplot2)
+library(reshape2)
+library(moments)
+library(car)
+```
+1. Data cleaning
+```{r}
+raw_data <- read_dta("C:/Users/Kylian Baeyens/Downloads/support.dta") 
+# Extract relevant features (primary predictor variables)
+data <- raw_data[c("age","sex","dzclass","edu","num_co","hospdead","totcst")]
+# Remove rows with NA for target variable (totcst)
+df <- data[!is.na(data$totcst), ] # cleaned up data
+```
+
+2. Descriptive analysis
+
+2.2 Summary statistics
+```{r}
+# Summary statistics for each variable
+summary(df)
+
+results <- data.frame(
+  Variable = character(),
+  Skewness = numeric(),
+  Kurtosis = numeric(),
+  stringsAsFactors = FALSE
+)
+
+# Loop over each variable in the data frame
+for (var_name in names(df)) {
+  # Ensure the variable is numeric
+  if (is.numeric(df[[var_name]])) {
+    skewness_value <- skewness(df[[var_name]])
+    kurtosis_value <- kurtosis(df[[var_name]])
+    
+    # Add the results to the results data frame
+    results <- rbind(results, 
+                     data.frame(
+                       Variable = var_name,
+                       Skewness = skewness_value,
+                       Kurtosis = kurtosis_value
+                     ))
+  }
+}
+
+# Print the results
+print(results)
+```
+
+2.2 Univariate distributions
+```{r}
+# Distribution plots for each variable for continuous variables
+par(mfrow = c(1, 4)) 
+boxplot(df$age, main="Age")
+boxplot(df$edu, main="Education")
+boxplot(df$num_co, main="Number of comorbidities")
+boxplot(df$totcst, main="Total cost")
+```
+```{r}
+par(mfrow = c(1, 4))
+#categorical variables
+barplot(table(df$sex)/length(df$sex), 
+        main = "Sex", 
+        xlab = "Frequency", 
+        ylab = "Sex",
+        xlim = c(0, 1),
+        horiz= TRUE)
+barplot(table(df$num_co)/length(df$num_co), 
+        main = "Number of comorbidities", 
+        xlab = "Frequency", 
+        ylab = "Number of comorbidities",
+        xlim = c(0, 1),
+        horiz= TRUE)
+barplot(table(df$dzclass)/length(df$dzclass), 
+        main = "Disease class", 
+        xlab = "Frequency", 
+        ylab = "Disease class", 
+        xlim = c(0, 1),
+        horiz= TRUE)
+barplot(table(df$hospdead)/length(df$hospdead), 
+        main = "Death in hospital", 
+        xlab = "Frequency", 
+        ylab = "Death in hospital", 
+        xlim = c(0, 1),
+        horiz= TRUE)
+
+```
+```{r}
+#Check normality using QQ-plots
+# QQ-plots of the continuous variables
+par(mfrow = c(2, 4)) 
+qqnorm(df$age, main = "Age")
+qqline(df$age, col = "red")
+
+qqnorm(df$edu, main = "Years of education")
+qqline(df$edu, col = "red")
+
+qqnorm(df$num_co, main = "Number of comorbidities")
+qqline(df$num_co, col = "red")
+
+qqnorm(df$sex, main = "Sex")
+qqline(df$sex, col = "red")
+
+qqnorm(df$dzclass, main = "Disease class")
+qqline(df$dzclass, col = "red")
+
+qqnorm(df$hospdead, main = "Death in hospital")
+qqline(df$hospdead, col = "red")
+
+qqnorm(df$totcst, main = "Total hospital cost")
+qqline(df$totcst, col = "red")
+
+# Only the age variable follows a normal distribution
+```
+2.3 Outlier detection
+  Boxplots from the univariate distributions can be used to detect outliers. We will keep   these outliers in the data because we suspect they contain usefull information.
+  
+2.4 Correlation analysis
+```{r}
+cor(df[, sapply(df, is.numeric)])  # Correlation matrix  using Pearson correlation
+```
+```{r}
+# Visualize correlation matrix using a heatmap
+cor_matrix <- cor(df[, sapply(df, is.numeric)], use = "complete.obs") # complete obs ensures the correlation is computed only for complete cases (no missing values)
+heatmap(cor_matrix,
+        main = "Correlation matrix heatmap",
+        Rowv = NA,
+        Colv = NA)
+```
+
+```{r}
+# Scatterplot matrix
+pairs(df)
+```
+```{r}
+# Scatter plot of a continuous predictor vs target
+plot(df$age, df$totcst)
+
+```
+
+2.4 Check for multicollinearity # maybe after a model has been made
+  Multicollinearity occurs when 2 or more predictors are highly correlated, which can lead
+  to instability in the coefficient estimates of the linear model we will build later on.   Using the VIF we can check of how much a variable is contributing to the standard error   in regression. When significant multicollinearity exists, the VIF will be very large for   the involved variables
+  
+```{r}
+vif(lm(totcst ~ ., data = df))  # Compute VIF for all predictors
+```
+  If the Variance Inflation Factor (VIF) equal 1 then the variables are not correlated,
+  if they are between 1 and 5 they are expected to be moderately correlated. From the VIF   calculated for each predictor it can be seen that they all have an VIF close to zero.     Which indicates no/ minimal correlation.
+  
+
+
+
+
