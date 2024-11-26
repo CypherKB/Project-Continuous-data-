@@ -34,6 +34,11 @@ boxplot(cont_data$totcst)
 summary(cont_data$totcst)
 #Heavily skewed distribution
 #max = 390 000, median = 15 110
+hist(log(cont_data$totcst+1))
+boxplot(log(cont_data$totcst+1))
+summary(log(cont_data$totcst+1))
+view(cont_data[cont_data$totcst==0, ])
+#Outlier at totcst = 0, but valid point
 
 barplot(table((cont_data$hospdead))) #most people not dead in hospital
 
