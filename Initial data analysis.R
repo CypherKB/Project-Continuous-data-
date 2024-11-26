@@ -49,9 +49,13 @@ summary(cont_data$edu)
 # 78 NA
 #Max = 30
 
+#log transform of cost
+#Add small constant such that we don't have log(0)
+cont_data$logcst <- log(cont_data[, "totcst"]+0.001) 
+min(cont_data$logcst)
 #Correlation matrix
 #Correlations between primary predictors and totalcst
-pred <- c("age", "sex", "dzclass", "num_co", "edu", "totcst")
+pred <- c("age", "sex", "dzclass", "num_co", "edu", "totcst", "logcst")
 cormat <- round(cor(cont_data[, pred], use="pairwise.complete.obs"), 2)
 
 # Get upper triangle of the correlation matrix
@@ -62,6 +66,7 @@ get_upper_tri <- function(cormat){
 upper_tri <- get_upper_tri(cormat)
 melted_cormat <- melt(upper_tri, na.rm = TRUE)
 
+#Plot of correlation matrix
 ggheatmap <- ggplot(melted_cormat, aes(Var2, Var1, fill = value))+
   geom_tile(color = "white")+
   scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
@@ -86,3 +91,72 @@ ggheatmap +
     legend.direction = "horizontal")+
   guides(fill = guide_colorbar(barwidth = 7, barheight = 1,
                                title.position = "top", title.hjust = 0.5))
+
+
+#plot all combinations of variables
+
+#All combinations of age
+
+#Independent of sex
+ggplot(cont_data, aes(x=factor(sex), y=age)) + 
+  geom_boxplot() + geom_smooth(method="loess") + geom_smooth(method="lm", color="red")
+
+#Mean independent of dzclass
+#Note higher ranges of age for dzclass=2 + non-constant variances between classes 
+ggplot(cont_data, aes(x=factor(dzclass), y=age)) + 
+  geom_boxplot() + geom_smooth(method="loess") + geom_smooth(method="lm", color="red")
+
+#Slight upward trend, less datapoints for num_co > 4
+ggplot(cont_data, aes(x=factor(num_co), y=age)) + 
+  geom_boxplot() + geom_smooth(method="loess")
+
+#Slight downward trend, most values at edu=12: high school degree
+#Some older people had to start work at earlier age
+#People age < 25 might still be in school
+ggplot(cont_data, aes(x=factor(edu), y=age)) + 
+  geom_boxplot() + geom_smooth(method="loess") + geom_smooth(method="lm", color="red")
+
+#Downward trend but not clearly linear due to huge variation totcst
+ggplot(cont_data, aes(y=totcst, x=age)) + 
+  geom_point() + geom_smooth(method="loess") + geom_smooth(method="lm", color="red")
+
+#Downward trend, linear approximation better suited
+ggplot(cont_data, aes(y=log(totcst+1), x=age)) + 
+  geom_point() + geom_smooth(method="loess") + geom_smooth(method="lm", color="red")
+
+c("age", "sex", "dzclass", "num_co", "edu", "totcst", "logcst")
+#All combinations of sex
+#No influence expected
+
+ggplot(cont_data, aes(x=dzclass, fill=factor(sex))) + 
+  geom_bar(position="dodge")
+
+ggplot(cont_data, aes(x=num_co, fill=factor(sex))) + 
+  geom_bar(position="dodge")
+
+ggplot(cont_data, aes(x=edu, fill=factor(sex))) + 
+  geom_bar(position="dodge")
+
+#num_co against totcst
+ggplot(cont_data, aes(x=factor(num_co), y=totcst)) +
+  geom_boxplot()
+
+ggplot(cont_data, aes(x=factor(num_co), y=log(totcst))) +
+  geom_boxplot() + geom_smooth(method="lm")
+
+#edu against totcst
+#No clear trend
+ggplot(cont_data, aes(y=totcst, x=edu)) + 
+  geom_point() + geom_smooth(method="loess") + geom_smooth(method="lm", color="red")
+
+#disease class against total cost
+#totcst dependent of disease class
+ggplot(cont_data, aes(x=factor(dzclass), y=log(totcst+1))) + 
+  geom_boxplot() + geom_smooth(method="lm", aes(group=-1))
+#For better linear regression change labels 2 and 3
+cont_data$dzclass_new <- cont_data$dzclass
+cont_data$dzclass_new[cont_data$dzclass == 2] <- 3
+cont_data$dzclass_new[cont_data$dzclass == 3] <- 2
+
+ggplot(cont_data, aes(x=factor(dzclass_new), y=log(totcst+1))) + 
+  geom_boxplot() + geom_smooth(method="lm", aes(group=-1))
