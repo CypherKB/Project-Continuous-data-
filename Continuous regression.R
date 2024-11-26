@@ -18,10 +18,29 @@ cont_data$dzclass_new[cont_data$dzclass == 3] <- 2
 #Exclude outlier totcst=0
 cont_data <- cont_data[-730, ]
 #retain 80% data
+set.seed(100)
+training <- sample_frac(cont_data, size=0.8)
 
-model <- lm(log(totcst)~scale(age), data=cont_data)
-summary(model)
-autoplot(model)
+slr_model <- lm(totcst~scale(age), data=training)
+summary(slr_model)
+confint(slr_model)
+autoplot(slr_model)
 # Cook's distance
-plot(model, 4)
+plot(slr_model, 4)
 
+#log transform totcst
+slr_model <- lm(log(totcst)~scale(age), data=training)
+summary(slr_model)
+confint(slr_model)
+autoplot(slr_model)
+# Cook's distance
+plot(slr_model, 4)
+
+#Multiple linear regression
+pred <- c("age", "sex", "dzclass_new", "num_co", "edu", "logcst")
+mlr_model <- lm(log(totcst)~scale(age)+sex+dzclass_new+num_co+edu, data=training)
+summary(mlr_model)
+confint(mlr_model)
+autoplot(mlr_model)
+
+plot(mlr_model, 4)
