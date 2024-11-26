@@ -51,8 +51,7 @@ summary(cont_data$edu)
 
 #log transform of cost
 #Add small constant such that we don't have log(0)
-cont_data$logcst <- log(cont_data[, "totcst"]+0.001) 
-min(cont_data$logcst)
+cont_data$logcst <- log(cont_data[, "totcst"]+1) 
 #Correlation matrix
 #Correlations between primary predictors and totalcst
 pred <- c("age", "sex", "dzclass", "num_co", "edu", "totcst", "logcst")
@@ -160,3 +159,42 @@ cont_data$dzclass_new[cont_data$dzclass == 3] <- 2
 
 ggplot(cont_data, aes(x=factor(dzclass_new), y=log(totcst+1))) + 
   geom_boxplot() + geom_smooth(method="lm", aes(group=-1))
+
+#Correlations of new variables
+#Correlation od dzclass_new and logcst is high
+pred <- c("age", "sex", "dzclass_new", "num_co", "edu", "logcst")
+cormat <- round(cor(cont_data[, pred], use="pairwise.complete.obs"), 2)
+
+# Get upper triangle of the correlation matrix
+get_upper_tri <- function(cormat){
+  cormat[lower.tri(cormat)]<- NA
+  return(cormat)
+}
+upper_tri <- get_upper_tri(cormat)
+melted_cormat <- melt(upper_tri, na.rm = TRUE)
+
+#Plot of correlation matrix
+ggheatmap <- ggplot(melted_cormat, aes(Var2, Var1, fill = value))+
+  geom_tile(color = "white")+
+  scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+                       midpoint = 0, limit = c(-1,1), space = "Lab", 
+                       name="Pearson\nCorrelation") +
+  theme_minimal()+ # minimal theme
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+                                   size = 12, hjust = 1))+
+  coord_fixed()
+
+ggheatmap + 
+  geom_text(aes(Var2, Var1, label = value), color = "black", size = 4) +
+  theme(
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    panel.grid.major = element_blank(),
+    panel.border = element_blank(),
+    panel.background = element_blank(),
+    axis.ticks = element_blank(),
+    legend.justification = c(1, 0),
+    legend.position = c(0.6, 0.7),
+    legend.direction = "horizontal")+
+  guides(fill = guide_colorbar(barwidth = 7, barheight = 1,
+                               title.position = "top", title.hjust = 0.5))
