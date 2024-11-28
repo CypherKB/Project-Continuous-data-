@@ -1,0 +1,376 @@
+---
+title: "Statistical modelling"
+output: html_document
+date: "2024-11-11"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Load the libraries
+```{r cars}
+#libraries
+library(haven)
+library(ggplot2)
+library(reshape2)
+library(moments)
+library(car)
+library(lmtest)
+library(tidyverse)
+library(broom)
+library(ggfortify)
+```
+1. Data cleaning
+```{r}
+raw_data <- read_dta("C:/Users/Kylian Baeyens/Downloads/support.dta") 
+# Extract relevant features (primary predictor variables)
+data <- raw_data[c("age","sex","dzclass","edu","num_co","hospdead","totcst")]
+# Remove rows with NA for target variable (totcst)
+df <- data[!is.na(data$totcst), ] # Remove rows with NA value for target variable
+df <- df[!is.na(df$edu), ] # Remove rows with NA value for edu variable
+
+#Check for duplicate values
+sum(duplicated(data)) #There are 0 duplicate values
+#Check for NA values
+sum(is.na(data$age)) #Ages are always entered
+sum(is.na(data$hospdead)) #Death in hospital is always entered
+sum(is.na(data$sex)) #Sex is always entered
+sum(is.na(data$dzclass)) #Disease class is always entered
+sum(is.na(data$num_co)) #Comorbidities is always entered
+sum(is.na(data$edu)) #Has 202 missing values for years of education
+#Needs to be taken into account when including this in the model
+sum(is.na(data$totcst))
+#For 105 patients the total cost is not entered
+#This cannot be used as training data for the continuous outcome
+# Remove rows with NA for target variable (totcst)
+df <- data[!is.na(data$totcst), ] # Remove rows with NA value for target variable
+df <- df[!is.na(df$edu), ] # Remove rows with NA value for edu variable
+#Exclude outlier totcst=0
+df <- df[-730, ]
+df$logtotcst<- log(df$totcst) + 1
+```
+
+2. Descriptive analysis
+
+2.2 Summary statistics
+```{r}
+# Summary statistics for each variable
+summary(df)
+
+results <- data.frame(
+  Variable = character(),
+  Skewness = numeric(),
+  Kurtosis = numeric(),
+  stringsAsFactors = FALSE
+)
+
+# Loop over each variable in the data frame
+for (var_name in names(df)) {
+  # Ensure the variable is numeric
+  if (is.numeric(df[[var_name]])) {
+    skewness_value <- skewness(df[[var_name]])
+    kurtosis_value <- kurtosis(df[[var_name]])
+    
+    # Add the results to the results data frame
+    results <- rbind(results, 
+                     data.frame(
+                       Variable = var_name,
+                       Skewness = skewness_value,
+                       Kurtosis = kurtosis_value
+                     ))
+  }
+}
+
+# Print the results
+print(results)
+```
+
+2.2 Univariate distributions
+```{r}
+# Distribution plots for each variable for continuous variables
+par(mfrow = c(1, 4)) 
+boxplot(df$age, main="Age")
+boxplot(df$edu, main="Education")
+boxplot(df$num_co, main="Number of comorbidities")
+boxplot(df$totcst, main="Total cost")
+```
+
+```{r}
+par(mfrow = c(1, 4))
+#categorical variables
+barplot(table(df$sex)/length(df$sex), 
+        main = "Sex", 
+        xlab = "Frequency", 
+        ylab = "Sex",
+        xlim = c(0, 1),
+        horiz= TRUE)
+barplot(table(df$num_co)/length(df$num_co), 
+        main = "Number of comorbidities", 
+        xlab = "Frequency", 
+        ylab = "Number of comorbidities",
+        xlim = c(0, 1),
+        horiz= TRUE)
+barplot(table(df$dzclass)/length(df$dzclass), 
+        main = "Disease class", 
+        xlab = "Frequency", 
+        ylab = "Disease class", 
+        xlim = c(0, 1),
+        horiz= TRUE)
+barplot(table(df$hospdead)/length(df$hospdead),
+        main = "Death in hospital",
+        xlab = "Frequency",
+        ylab = "Death in hospital", 
+        xlim = c(0, 1),
+        horiz= TRUE)
+
+```
+
+```{r}
+hist(df$totcst)
+hist(df$logtotcst)
+boxplot(df$logtotcst)
+summary(df$logtotcst)
+# The use of the log(totcst) was used to achieve better the results, the dependent variable follows a left skewed normal distribution after log transformation
+
+# Log +1 transformation of totcst variable, log for better data distribution and interpretation and the added constant (+1) to avoid log(0)
+```
+
+2.3 Outlier detection
+  Boxplots from the univariate distributions can be used to detect outliers. We will keep   these outliers in the data because we suspect they contain usefull information.
+  
+2.4 Correlation analysis
+
+```{r}
+#Correlation matrix
+#Correlations between primary predictors and totalcst
+pred <- c("age", "sex", "dzclass", "num_co", "edu", "totcst","logtotcst")
+cormat <- round(cor(df[, pred], use="pairwise.complete.obs"), 2)
+
+# Get upper triangle of the correlation matrix
+get_upper_tri <- function(cormat){
+  cormat[lower.tri(cormat)]<- NA
+  return(cormat)
+}
+upper_tri <- get_upper_tri(cormat)
+melted_cormat <- melt(upper_tri, na.rm = TRUE)
+
+#Plot of correlation matrix
+ggheatmap <- ggplot(melted_cormat, aes(Var2, Var1, fill = value))+
+  geom_tile(color = "white")+
+  scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+                       midpoint = 0, limit = c(-1,1), space = "Lab", 
+                       name="Pearson\nCorrelation") +
+  theme_minimal()+ # minimal theme
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+                                   size = 12, hjust = 1))+
+  coord_fixed()
+
+ggheatmap + 
+  geom_text(aes(Var2, Var1, label = value), color = "black", size = 4) +
+  theme(
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    panel.grid.major = element_blank(),
+    panel.border = element_blank(),
+    panel.background = element_blank(),
+    axis.ticks = element_blank(),
+    legend.justification = c(1, 0),
+    legend.position = c(0.6, 0.7),
+    legend.direction = "horizontal")+
+  guides(fill = guide_colorbar(barwidth = 7, barheight = 1,
+                               title.position = "top", title.hjust = 0.5))
+
+```
+```{r}
+pairs(df)
+```
+
+
+```{r}
+#plot all combinations of variables
+#All combinations of age
+#Independent of sex
+ggplot(df, aes(x=factor(sex), y=age)) + 
+  geom_boxplot() + geom_smooth(method="loess") + geom_smooth(method="lm", color="red")
+
+
+#Mean independent of dzclass
+#Note higher ranges of age for dzclass=2 + non-constant variances between classes 
+ggplot(df, aes(x=factor(dzclass), y=age)) + 
+  geom_boxplot() + geom_smooth(method="loess") + geom_smooth(method="lm", color="red")
+
+#Slight upward trend, less datapoints for num_co > 4
+ggplot(df, aes(x=factor(num_co), y=age)) + 
+  geom_boxplot() + geom_smooth(method="loess")
+
+#Slight downward trend, most values at edu=12: high school degree
+#Some older people had to start work at earlier age
+#People age < 25 might still be in school
+ggplot(df, aes(x=factor(edu), y=age)) + 
+  geom_boxplot() + geom_smooth(method="loess") + geom_smooth(method="lm", color="red")
+
+#Downward trend but not clearly linear due to huge variation totcst
+ggplot(df, aes(y=totcst, x=age)) + 
+  geom_point() + geom_smooth(method="loess") + geom_smooth(method="lm", color="red")
+
+#Downward trend, linear approximation better suited
+ggplot(df, aes(y=log(totcst+1), x=age)) + 
+  geom_point() + geom_smooth(method="loess") + geom_smooth(method="lm", color="red")
+
+
+```
+```{r}
+#All combinations of sex
+#No influence expected
+
+ggplot(df, aes(x=dzclass, fill=factor(sex))) + 
+  geom_bar(position="dodge")
+
+ggplot(df, aes(x=num_co, fill=factor(sex))) + 
+  geom_bar(position="dodge")
+
+ggplot(df, aes(x=edu, fill=factor(sex))) + 
+  geom_bar(position="dodge")
+
+#num_co against totcst
+ggplot(df, aes(x=factor(num_co), y=totcst)) +
+  geom_boxplot()
+
+ggplot(df, aes(x=factor(num_co), y=log(totcst))) +
+  geom_boxplot() + geom_smooth(method="lm")
+
+#edu against totcst
+#No clear trend
+ggplot(df, aes(y=totcst, x=edu)) + 
+  geom_point() + geom_smooth(method="loess") + geom_smooth(method="lm", color="red")
+
+#disease class against total cost
+#totcst dependent of disease class
+ggplot(df, aes(x=factor(dzclass), y=log(totcst+1))) + 
+  geom_boxplot() + geom_smooth(method="lm", aes(group=-1))
+#For better linear regression change labels 2 and 3
+df$dzclass_new <- df$dzclass
+df$dzclass_new[df$dzclass == 2] <- 3
+df$dzclass_new[df$dzclass == 3] <- 2
+
+ggplot(df, aes(x=factor(dzclass_new), y=log(totcst+1))) + 
+  geom_boxplot() + geom_smooth(method="lm", aes(group=-1))
+
+```
+
+```{r}
+# correlation of the new variables
+#Correlations of new variables
+#Correlation od dzclass_new and logcst is high
+pred <- c("age", "sex", "dzclass_new", "num_co", "edu", "logtotcst")
+cormat <- round(cor(df[, pred], use="pairwise.complete.obs"), 2)
+
+# Get upper triangle of the correlation matrix
+get_upper_tri <- function(cormat){
+  cormat[lower.tri(cormat)]<- NA
+  return(cormat)
+}
+upper_tri <- get_upper_tri(cormat)
+melted_cormat <- melt(upper_tri, na.rm = TRUE)
+
+#Plot of correlation matrix
+ggheatmap <- ggplot(melted_cormat, aes(Var2, Var1, fill = value))+
+  geom_tile(color = "white")+
+  scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+                       midpoint = 0, limit = c(-1,1), space = "Lab", 
+                       name="Pearson\nCorrelation") +
+  theme_minimal()+ # minimal theme
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+                                   size = 12, hjust = 1))+
+  coord_fixed()
+
+ggheatmap + 
+  geom_text(aes(Var2, Var1, label = value), color = "black", size = 4) +
+  theme(
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    panel.grid.major = element_blank(),
+    panel.border = element_blank(),
+    panel.background = element_blank(),
+    axis.ticks = element_blank(),
+    legend.justification = c(1, 0),
+    legend.position = c(0.6, 0.7),
+    legend.direction = "horizontal")+
+  guides(fill = guide_colorbar(barwidth = 7, barheight = 1,
+                               title.position = "top", title.hjust = 0.5))
+
+
+```
+
+
+3. Linear models
+
+```{r}
+# Split the data in 80% train and 20% test
+# Set the random seed for reproducibility
+#Normalize the data for interpretation of coefficients
+predictors <- scale(df[, c("age", "sex", "dzclass", "num_co", "edu")])
+scaled_data <- data.frame(predictors, df[, c("totcst", "logtotcst")])
+set.seed(100)
+# Get the row indices for the training set (80% of the data)
+train_indices <- sample(seq_len(nrow(scaled_data)), size = 0.8 * nrow(scaled_data))
+# Create the training and test sets
+training <- scaled_data[train_indices, ]  # 80% of the rows
+test <- scaled_data[-train_indices, ]    # Remaining 20% of the rows
+```
+
+3.1 First linear model
+
+
+```{r}
+# with non log transformed data
+model1 <- lm(totcst~age, data=training)
+summary(model1)
+confint(model1)
+autoplot(model1)
+# Cook's distance
+plot(model1, 4)
+```
+```{r}
+# with log transformed data
+logmodel1 <- lm(logtotcst~age, data=training)
+summary(logmodel1)
+confint(logmodel1)
+autoplot(logmodel1)
+# Cook's distance
+plot(logmodel1, 4)
+```
+
+3.1: Interpretation
+______________________________________________________________________________
+The residuals vs fitted plot allows one to check the linearity, unequal variance and outliers in the model. From this plot the assumption of linearity appears true.
+
+From the QQ-plot of residuals can be deduced that the assumption of normality of the residuals appears to be untrue.
+
+The scale-location plot is then used to check the assumption of homoscedascity (contant variance of the residuals), the upward trend in the residuals suggest heteroscedascity
+
+The residuals vs leverage plot is used to detect influential observations in which in a well fited model most data points should have a low leverage and low residuals value
+
+When log transforming the dependent variable totcst and building the linear model we see changes in the residuals which suggest that the assumptions hold when using the log transformed totcst.
+
+
+3.2 Second linear model
+```{r}
+#Multiple linear regression
+mlr_model <- lm(logtotcst~age+sex+dzclass+num_co+edu, data=training)
+summary(mlr_model)
+confint(mlr_model)
+autoplot(mlr_model)
+
+plot(mlr_model, 4)
+```
+3.2: Interpretation
+______________________________________________________________________________
+The residuals vs fitted plot suggests that the assumption of linearity holds true
+The Normal QQ plots suggests that the assumption of normality holds true
+The scale location plot suggests homoscedascity
+The residuals vs leverage plot indicate the presence of outliers
+
+
+
